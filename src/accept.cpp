@@ -17,12 +17,22 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				{
 					/* CancelIoEx cancel WSARecv operation */
 					/* Or thread exit! */
-					puts("ERROR_OPERATION_ABORTED! the WSARecv operation is aborted!");
+					log_info("ERROR_OPERATION_ABORTED! the WSARecv operation is aborted!");
 				}break;
 				case ERROR_CONNECTION_ABORTED:
 				{
 					printf("[error] ERROR_OPERATION_ABORTED at %p, CloseClient\n", ctx);
 					CloseClient(ctx);
+				}break;
+				case ERROR_NETNAME_DELETED:
+				{
+					log_info("ERROR_NETNAME_DELETED: close client");
+					if ((void*)ctx == (void*)pAcceptEx) {
+						HeapFree(heap, 0, ctx);
+						continue;
+					}
+					CancelIoEx((HANDLE)ctx->client, NULL);
+					goto DELETE_CLIENT;
 				}break;
 				default:
 					assert(0);
@@ -35,7 +45,7 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				processRequest(acceptIOCP.currentCtx, dwbytes);
 			}
 			else {
-				log_fmt("[client error] empty request\n");
+				log_info("client error: empty request");
 				CloseClient(acceptIOCP.currentCtx);
 			}
 			accept_next();
@@ -52,15 +62,11 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 		if (dwbytes == 0) {
 			if (ctx->state == State::AfterDisconnect)
 			{
+				DELETE_CLIENT:
 				if (closesocket(ctx->client) != 0) {
 					ctx->client = INVALID_SOCKET;
 					assert(0);
 				}
-				if (ctx->sbuf) {
-					ctx->sbuf->~basic_string();
-					ctx->sbuf = NULL;
-				}
-
 				if (ctx->hasp) {
 					(&ctx->p)->~Parse_Data();
 				}
@@ -71,11 +77,6 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				if (ctx->hProcess && ctx->hProcess != INVALID_HANDLE_VALUE) {
 					CloseHandle(ctx->hProcess);
 					ctx->hProcess = NULL;
-				}
-				if (ctx->dir) {
-					if (HeapFree(heap, 0, ctx->dir)==FALSE) {
-						assert(0);
-					}
 				}
 				HeapFree(heap, 0, ctx);
 			}

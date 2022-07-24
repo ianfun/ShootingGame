@@ -27,12 +27,11 @@ CONSTEVAL ULONG  cstrlen(const char* s) {
 	return res;
 }
 enum class State : unsigned __int8 {
-	AfterRecv, ReadStaticFile, SendPartFile, RecvNextRequest,ListDirRecvNextRequest, PostWritePartFile, POSTWaitFileData, PostRecvNectRequest, AfterSendHTML, AfterHandShake, WebSocketConnecting, AfterDisconnect
+	AfterRecv, ReadStaticFile, SendPartFile, RecvNextRequest, AfterSendHTML, AfterHandShake, WebSocketConnecting, WebSocketClosing ,AfterDisconnect
 };
 int http_on_header_field(llhttp_t* parser, const char* at, size_t length);
 int http_on_header_value(llhttp_t* parser, const char* at, size_t length);
 int http_on_url(llhttp_t* parser, const char* at, size_t length);
-int http_on_body(llhttp_t* parser, const char* at, size_t length);
 int http_on_header_complete(llhttp_t* parser);
 struct Parse_Data {
 	Parse_Data() : headers{}, at{}, length{} {
@@ -41,7 +40,6 @@ struct Parse_Data {
 		settings.on_header_field = http_on_header_field;
 		settings.on_header_value = http_on_header_value;
 		settings.on_headers_complete = http_on_header_complete;
-		settings.on_body = http_on_body;
 		llhttp_init(&parser, HTTP_REQUEST, &settings);
 	};
 	llhttp_t parser;
@@ -55,44 +53,23 @@ struct IOCP {
 	Parse_Data p;
 	WCHAR* url;
 	UINT64 filesize;
-	COORD coord;
 	SOCKET client;
 	State state;
 	OVERLAPPED recvOL, sendOL;
-	/*
-	* sendOL is used in WSASend, while recvOL is used in ReadFile or WriteFile
-	*/
-	char padding; /*the EOS char*/
+	char buf[4096+64];
+	char padding;
 	DWORD dwFlags;
-	WSABUF sendBuf[2], recvBuf[1], conpty[2];
+	WSABUF sendBuf[2], recvBuf[1];
 	unsigned __int64 payload_len;
-	int cmd;
-	WCHAR* dir;
 	BYTE header[4];
 	Websocket::Opcode op;
-	HANDLE hStdOut, hStdIn;
-	HPCON hPC;
-	HANDLE hReadThread;
-	HANDLE waitHandle;
 	HANDLE hProcess;
-	std::string* sbuf;
-	LPPROC_THREAD_ATTRIBUTE_LIST addrlist;char buf[4096+64];
-	bool keepalive: 1,  firstCon:1, is_close_frame_sent, Reading6Bytes: 1, hasp: 1;
+	CHAR* player_name;
+	INT16 x, y, rad;
+	bool keepalive: 1,  firstCon:1, Reading6Bytes: 1, hasp: 1;
 };
 
 namespace HTTP_ERR_RESPONCE {
-	// 204 No Content
-	static char move_ok[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nOK, File Renamed!";
-	static char move_not_found[] = "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\nThe file to rename to not found.";
-	static char move_err[] = "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\nError when rename file.";
-	static char new_dir_ok[] = "HTTP/1.1 201 Created\r\nConnection: close\r\n\r\nOK, Directory created!";
-	static char new_dir_exisits[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nThe directory already exists.";
-	static char new_dir_not_found[] = "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\nThe path to create is not in file system.";
-	static char new_dir_err[] = "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\nSorry, error during creating directory.";
-	static char delete_ok[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nOK, Item Deleted!";
-	static char delete_not_found[] = "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\nThe file to delete is not found.";
-	static char delete_access_denied[] = "HTTP/1.1 202 Accepted\r\nConnection: close\r\n\r\nThe directory is not not empty.Are you sure to remove recursively?";
-	static char delete_err[] = "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\nSome error happened when delete the file.The error is un-defined.";
 	static char sinternal_server_error[] = "HTTP/1.1 500 Internal Server Error\r\n"
 		"Connection: close\r\n"
 		"Content-Type: text/html; charset=utf-8\r\n"

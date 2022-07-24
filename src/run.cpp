@@ -13,9 +13,10 @@
 #include <map>
 #include <string>
 #include <shlwapi.h>
-#include "NtAPI.h"
 #include <llhttp.h>
+#include <set>
 #include "types.h"
+
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "ws2_32")
 #pragma comment(lib, "mswsock") 
@@ -31,18 +32,21 @@ static HMODULE ntdll;
 static OVERLAPPED dumyOL = { 0 };
 struct IOCP;
 
+std::set<IOCP*> players{};
+
 #if N_THREADS > 1
 static HANDLE hThs[N_THREADS-1];
 #endif
 
 #ifdef _DEBUG
-#define log_puts(x) puts(x)
-#define log_fmt printf
-#define assert(x) {if (!(x)){printf("[error] %s.%d: %s, err=%d\n", __FILE__, __LINE__, #x, WSAGetLastError());}}
+#define log_info(s, ...) fprintf(stderr, "\u001b[32m[info]: " s "\u001B[0m\n", __VA_ARGS__)
+#define log_warn(s, ...)  fprintf(stderr, "\u001b[33m[warn]: " s "\u001B[0m\nWSAError: ", __VA_ARGS__);printWSAError()
+#define assert(x) {if (!(x)){fprintf(stderr, "\u001b[31m[assertion failed]: %s.%d: %s, err=%d\u001B[0m\nWSAError: ", __FILE__, __LINE__, #x, WSAGetLastError());printWSAError();}}
 #else
 #define assert(x) (x)
-#define log_puts(x) 
-#define log_fmt(x, ...)
+#define log_info(x, ...)
+#define log_warn(x, ...)
+
 #endif // _DEBUG
 //#define TRACE
 #ifdef TRACE
@@ -53,22 +57,30 @@ static HANDLE hThs[N_THREADS-1];
 #define CloseClient closeClient
 #endif
 
+void websocketWrite(IOCP* ctx, const char* msg, ULONG length, OVERLAPPED* ol, WSABUF wsaBuf[2], Websocket::Opcode op);
+void printWSAError() {
+	LPWSTR s = NULL;
+	FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, WSAGetLastError(),
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPWSTR)&s, 0, NULL);
+	DWORD written;
+	WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), s, lstrlenW(s), &written, NULL);
+	LocalFree(s);
+}
+
 __declspec(noreturn) void fatal(const char* msg) {
-	log_fmt("[fatal error] %s\nWSAGetLastError=%d\n", msg, WSAGetLastError());
+	log_warn("%s", msg);
 	ExitProcess(1);
 }
 void closeClient(IOCP* ctx);
-inline LPCWSTR urlToPath(IOCP* ctx) {
-	if (ctx->url)
-		return ctx->url;
-	return L"index.html";
-}
+
+#include "player.cpp"
 #include "Mine.h"
-#include "fs.cpp"
 void accept_next();
 #include "handshake.cpp"
+#include "Game.cpp"
 #include "frame.cpp"
-#include "pipe.cpp"
 #include "server.cpp"
 #include "accept.cpp"
 
@@ -81,14 +93,6 @@ DWORD __stdcall run(LPVOID param)
 	heap = GetProcessHeap();
 	if (heap == NULL) {
 		fatal("GetProcessHeap");
-	}
-	ntdll = LoadLibraryW(L"ntdll");
-	if (ntdll == NULL) {
-		fatal("LoadLibrary(\"ntdll\")");
-	}
-	pNtQueryDirectoryFile = (decltype(pNtQueryDirectoryFile))GetProcAddress(ntdll, "NtQueryDirectoryFile");
-	if (pNtQueryDirectoryFile == NULL) {
-		fatal("GetProcAddress(\"NtQueryDirectoryFile\")");
 	}
 	{
 		DWORD size = 0;
@@ -170,7 +174,7 @@ DWORD __stdcall run(LPVOID param)
 				num--;
 				head = head->Next;
 			}
-			log_fmt("selected address: %s\n", head->IpAddressList.IpAddress.String);
+			printf("selected address: %s\n", head->IpAddressList.IpAddress.String);
 			if (inet_pton(AF_INET, head->IpAddressList.IpAddress.String, (SOCKADDR*)&ip4) != 1) {
 				fatal("inet_pton");
 			}
@@ -219,12 +223,12 @@ DWORD __stdcall run(LPVOID param)
 	for (int i = 0; i < N_THREADS-1; ++i) {
 		DWORD id;
 		hThs[i] = CreateThread(NULL, 0, RunIOCPLoop, NULL, 0, &id);
-		log_fmt("[info] spawn thrad: (id=%u)\n", id);
+		log_info("spawn thrad: (id=%u)", id);
 	}
 #endif
-	log_fmt("[info] running main iocp thread: (id=%u)\n", GetCurrentThreadId());
+	log_info("running main iocp thread: (id=%u)", GetCurrentThreadId());
 	(void)RunIOCPLoop(NULL);
-	log_fmt("[info] exit main iocp loop (id=%u), wait for all threads exit\n", GetCurrentThreadId());
+	log_info("exit main iocp loop (id=%u), wait for all threads exit\n", GetCurrentThreadId());
 #if N_THREADS > 1
 	WaitForMultipleObjects(N_THREADS - 1, hThs, TRUE, INFINITE);
 #endif
@@ -235,7 +239,6 @@ DWORD __stdcall run(LPVOID param)
 	closeHash();
 	_ASSERT(_CrtCheckMemory());
 	CloseHandle(iocp);
-	FreeLibrary(ntdll);
 	puts("[info] exit process");
 	return 0;
 }

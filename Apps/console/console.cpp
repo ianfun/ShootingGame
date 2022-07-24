@@ -10,6 +10,14 @@ BOOL WINAPI ConsoleHandler(DWORD event)
 			PostQueuedCompletionStatus(iocp, 0, (ULONG_PTR)RunIOCPLoop, 0);
 		}
 		return TRUE;
+	case CTRL_BREAK_EVENT:
+		{
+		printf("* * * * player infomation * * * *\n%zu players\n", players.size());
+		for (auto ctx : players) {
+			printf("\tname: %s, x: %d, y: %d, rad: %d\n", ctx->player_name, (int)ctx->x, (int)ctx->y, (int)ctx->rad);
+		}
+		}
+		return TRUE;
 	}
 	return FALSE;
 }

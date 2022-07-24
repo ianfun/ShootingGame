@@ -1,4 +1,4 @@
-void websocketWrite(IOCP* ctx, const char* msg, ULONG length, OVERLAPPED* ol, WSABUF wsaBuf[2], Websocket::Opcode op = Websocket::Binary) {
+void websocketWrite(IOCP* ctx, const char* msg, ULONG length, OVERLAPPED* ol, WSABUF wsaBuf[2], Websocket::Opcode op) {
 	ULONG hsize = 2;
 	ctx->header[0] = 0b10000000 | BYTE(op);
 	if (length < 126) {
@@ -11,7 +11,7 @@ void websocketWrite(IOCP* ctx, const char* msg, ULONG length, OVERLAPPED* ol, WS
 		ctx->header[3] = (BYTE)length;
 	}
 	else {
-		log_puts("[client error] websocket: data too long");
+		log_warn("client error: websocket: data too long");
 		return;
 	}
 	wsaBuf[0].buf = (char*)ctx->header;
@@ -35,84 +35,16 @@ void onRecvData(IOCP* ctx) {
 		case Websocket::Text:
 		case Websocket::Binary:
 		{
-			if (payload[0] == 0 && ctx->payload_len==5) {
-				COORD c;
-				c.Y = *(PSHORT) & payload[1];
-				c.X = *(PSHORT)&payload[3];
-				ResizePseudoConsole(ctx->hPC, c);
-				printf("ResizePseudoConsole: X=%d, Y=%d\n", c.X, c.Y);
-			}
-			else {
-				DWORD written = 0;
-				if (WriteFile(ctx->hStdIn, payload, (DWORD)ctx->payload_len, &written, 0) == FALSE) {
-					assert(0);
-				}
-			}
+			onWebSocketMesssage(ctx, payload);
 		}break;
-
 		case Websocket::Close:
 		{
-			if (ctx->is_close_frame_sent) {
-				CloseClient(ctx);
-				return;
-			}
-			if (ctx->waitHandle) {
-				BOOL b = UnregisterWait(ctx->waitHandle);
-				// !important: UnregisterWait is necessary to prevent *heap is broken exception* in ClosePseudoConsole(ctx->hPC)
-				assert(b);
-				ctx->waitHandle = NULL;
-			}
-			_ASSERT(_CrtCheckMemory());
-			if (ctx->hReadThread) {
-				if (CancelSynchronousIo(ctx->hReadThread) == FALSE) {
-					assert(0);
-				}
-				CloseHandle(ctx->hReadThread);
-				ctx->hReadThread = NULL;
-			}
-			if (ctx->hProcess) {
-				CloseHandle(ctx->hProcess);
-				ctx->hProcess = NULL;
-			}
-			if (ctx->hPC) {
-				ClosePseudoConsole(ctx->hPC);
-				ctx->hPC = NULL;
-			}
-			if (ctx->hStdIn) {
-				if (CloseHandle(ctx->hStdIn) == FALSE) {
-					assert(0);
-				}
-				ctx->hStdIn = NULL;
-			}
-			if (ctx->hStdOut) {
-				if (CloseHandle(ctx->hStdOut) == FALSE) {
-					assert(0);
-				}
-				ctx->hStdOut = NULL;
-			}
-			if (ctx->addrlist) {
-				DeleteProcThreadAttributeList(ctx->addrlist);
-				free(ctx->addrlist);
-				ctx->addrlist = NULL;
-			}
-			/*
-			* write the close frame
-			*/
-			if (ctx->payload_len >= 2) {
-				WORD code = ntohs(*(PWORD)payload);
-				log_fmt("Websocket: closed frame: (code: %u, reason: %.*s)\n", code, (int)(ctx->payload_len - 2), payload + 2);
-				websocketWrite(ctx, (const char*)payload, (ULONG)ctx->payload_len, &ctx->sendOL, ctx->sendBuf, Websocket::Close);
-			}
-			else {
-				/* no error code */
-				*(unsigned short*)ctx->buf = htons(1000);
-				memcpy(&ctx->buf[2], "no close code", 13);
-				websocketWrite(ctx, ctx->buf, 2, &ctx->sendOL, ctx->sendBuf, Websocket::Close);
-			}
-			ctx->state = State::AfterSendHTML;
-			return;
-
-		}
+			constexpr USHORT close_msg = 1000;
+			((PBYTE)ctx->buf)[0] = (BYTE)(close_msg >> 8);
+			((PBYTE)ctx->buf)[1] = (BYTE)close_msg;
+			websocketWrite(ctx, ctx->buf, 2, &ctx->sendOL, ctx->sendBuf, Websocket::Opcode::Close);
+			ctx->state = State::WebSocketClosing;
+		}break;
 		default: {
 			CloseClient(ctx);
 		}return;
@@ -131,19 +63,19 @@ void onRead6Complete(IOCP* ctx) {
 	PBYTE data = (PBYTE)ctx->buf;
 	BIT FIN = data[0] & 0b10000000;
 	if (!FIN) {
-		log_puts("[client error] websocket: FIN MUST be 1");
+		log_warn("client error: websocket: FIN MUST be 1");
 		CloseClient(ctx);
 		return;
 	}
 	ctx->op = Websocket::Opcode(data[0] & 0b00001111);
 	if (data[0] & 0b01110000) {
-		log_puts("[client error] websocket: RSV is not zero");
+		log_warn("client error: websocket: RSV is not zero");
 		CloseClient(ctx);
 		return;
 	}
 	BIT hasmask = data[1] & 0b10000000;
 	if (!hasmask) {
-		log_puts("[client error] websocket: client MUST mask data");
+		log_warn("client error: websocket: client MUST mask data");
 		CloseClient(ctx);
 		return;
 	}
@@ -177,7 +109,7 @@ void onRead6Complete(IOCP* ctx) {
 		return;
 	}
 	if (ctx->payload_len + 6 > sizeof(ctx->buf)) {
-		log_puts("[client error] websocket: data too large!");
+		log_warn("client error: websocket: data too large!");
 		CloseClient(ctx);
 		return;
 	}
