@@ -52,7 +52,10 @@ struct Parse_Data {
 struct IOCP {
 	Parse_Data p;
 	WCHAR* url;
-	UINT64 filesize;
+	union {
+		UINT64 filesize;
+		UINT16 id;
+	};
 	SOCKET client;
 	State state;
 	OVERLAPPED recvOL, sendOL;

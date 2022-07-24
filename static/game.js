@@ -17,6 +17,7 @@ const MIN_SPEED = 5;
 const BULLET_SPEED = 20;
 const my_x = 725;
 const my_y = 325;
+const WS_UPDATE_CLOCK = 15;
 var bg_x = 0;
 var bg_y = 0;
 var speed = 1;
@@ -25,7 +26,7 @@ var then;
 var bulletSet = new Set();
 var wsClock = 0;
 var quit = document.createElement('button');
-var players = [];
+var players = {};
 quit.innerText = 'quit';
 quit.onclick = quitGame;
 quit.style.position = 'fixed';
@@ -48,14 +49,15 @@ var counter = 0;
 ws.onopen = function(){
 	ws.onmessage = function(m){
 		var view = new DataView(m.data);
-		var c = 0;
-		players.length = 0;
-		for(var i=0;i<m.data.byteLength;i+=6){
-			const x = view.getInt16(i, true)/15;
-			const y= view.getInt16(i+2, true)/15;
-			const rad = view.getInt16(i+4, true)/10000;
-			players[c] = {'x': x, 'y': y, 'rad': rad};
-			++c;
+		for(var i=0;i<m.data.byteLength;i+=8){
+			const id = view.getInt16(i, true);
+			const last = players[id];
+			players[id] = {x: view.getInt16(i+2, true)/15, y: view.getInt16(i+4, true)/15, rad: view.getInt16(i+6, true)/10000};
+			if(last){
+				players[id].xs = last.x - players[id].x;
+				players[id].ys = last.y - players[id].y;
+				players[id].rads = last.rad - players[id].rad;
+			}
 		}
 	};
 	const DOWN_LIMIT = my_y-bg.height;
@@ -84,7 +86,7 @@ ws.onopen = function(){
 	}
 	function frame(){
 		++wsClock;
-		if (wsClock > 15) {
+		if (wsClock > WS_UPDATE_CLOCK) {
 			if(ws.bufferedAmount==0){
 				wsClock = 0;
 				var view = new DataView(new ArrayBuffer(6));
@@ -180,7 +182,7 @@ ws.onopen = function(){
 		ctx.lineWidth = 1;
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.drawImage(bg, bg_x, bg_y, bg.width, bg.height);
-		
+
 		drawPlayer(my_x, my_y, rdegree);
 
 		ctx.lineWidth = 3;
@@ -191,7 +193,7 @@ ws.onopen = function(){
 			ctx.arc(bullet.x + bg_x, bullet.y + bg_y, 3.5, 0, 2*Math.PI);
 			ctx.stroke();
 		}
-		for(let p of players){
+		for(let p of Object.values(players)){
 			drawPlayer(bg_x + p.x, bg_y + p.y, p.rad);
 		}
 	}

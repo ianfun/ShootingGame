@@ -206,15 +206,13 @@ void processRequest(IOCP* ctx, DWORD dwbytes) {
 		case HPE_PAUSED_UPGRADE:
 		{
 			auto upgrade = ctx->p.headers.find("Upgrade");
-			auto pro = ctx->p.headers.find("Sec-WebSocket-Protocol");
-			if (upgrade != ctx->p.headers.end() && pro != ctx->p.headers.end()) {
+			if (upgrade != ctx->p.headers.end()) {
 				if (upgrade->second == "websocket") {
 					auto ws_key = ctx->p.headers.find("Sec-WebSocket-Key");
 					if (ws_key != ctx->p.headers.end()) {
 						{
-							ctx->player_name = StrDupA(pro->second.data());
-							if (ctx->player_name != NULL) {
-								newPlayer(ctx);
+							auto pro = ctx->p.headers.find("Sec-WebSocket-Protocol");
+							if (pro == ctx->p.headers.end()) {
 								ctx->state = State::AfterHandShake;
 								ws_key->second += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 								char buf[29];
@@ -225,15 +223,35 @@ void processRequest(IOCP* ctx, DWORD dwbytes) {
 									"HTTP/1.1 101 Switching Protocols\r\n"
 									"Upgrade: WebSocket\r\n"
 									"Connection: Upgrade\r\n"
-									"Sec-WebSocket-Protocol: %s\r\n"
-									"Sec-WebSocket-Accept: %s\r\n\r\n", pro->second.data(), buf);
+									"Sec-WebSocket-Accept: %s\r\n\r\n",  buf);
 								ctx->sendBuf[0].buf = ctx->buf;
 								ctx->sendBuf[0].len = (ULONG)len;
 								WSASend(ctx->client, ctx->sendBuf, 1, NULL, 0, &ctx->sendOL, NULL);
 							}
 							else {
-								errBuf = &HTTP_ERR_RESPONCE::bad_request;
-								goto BAD_REQUEST_AND_RELEASE;
+								ctx->player_name = StrDupA(pro->second.data());
+								if (ctx->player_name != NULL) {
+									newPlayer(ctx);
+									ctx->state = State::AfterHandShake;
+									ws_key->second += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+									char buf[29];
+									BOOL ret = HashHanshake(ws_key->second.data(), (ULONG)ws_key->second.length(), buf);
+									assert(ret);
+									int len;
+									len = sprintf(ctx->buf,
+										"HTTP/1.1 101 Switching Protocols\r\n"
+										"Upgrade: WebSocket\r\n"
+										"Connection: Upgrade\r\n"
+										"Sec-WebSocket-Protocol: %s\r\n"
+										"Sec-WebSocket-Accept: %s\r\n\r\n", pro->second.data(), buf);
+									ctx->sendBuf[0].buf = ctx->buf;
+									ctx->sendBuf[0].len = (ULONG)len;
+									WSASend(ctx->client, ctx->sendBuf, 1, NULL, 0, &ctx->sendOL, NULL);
+								}
+								else {
+									errBuf = &HTTP_ERR_RESPONCE::internal_server_error;
+									goto BAD_REQUEST_AND_RELEASE;
+								}
 							}
 						}
 					}

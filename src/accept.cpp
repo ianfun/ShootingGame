@@ -7,7 +7,18 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 		if (ret == FALSE) {
 			if (ctx) {
 				if ((void*)ctx == (void*)pAcceptEx) {
-					assert(0);
+					int err = WSAGetLastError();
+					switch (err) {
+					case ERROR_CONNECTION_ABORTED:
+					case ERROR_NETNAME_DELETED:
+					{
+						goto DELETE_CLIENT;
+					}break;
+					default:
+					{
+						assert(0);
+					}
+					}
 					accept_next();
 					continue;
 				}
@@ -77,6 +88,9 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				if (ctx->hProcess && ctx->hProcess != INVALID_HANDLE_VALUE) {
 					CloseHandle(ctx->hProcess);
 					ctx->hProcess = NULL;
+				}
+				if (ctx->player_name) {
+					LocalFree(ctx->player_name);
 				}
 				HeapFree(heap, 0, ctx);
 			}

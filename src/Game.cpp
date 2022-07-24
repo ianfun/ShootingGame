@@ -13,10 +13,11 @@ void onWebSocketMesssage(IOCP* ctx, PBYTE payload) {
 		if (player == ctx) {
 			continue;
 		}
+		*d++ = player->id;
 		*d++ = player->x;
 		*d++ = player->y;
 		*d++ = player->rad;
-		i += 6;
+		i += 8;
 	}
 	websocketWrite(ctx, ctx->buf, i, &ctx->sendOL, ctx->sendBuf, Websocket::Opcode::Binary);
 }
