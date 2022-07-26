@@ -27,7 +27,15 @@ CONSTEVAL ULONG  cstrlen(const char* s) {
 	return res;
 }
 enum class State : unsigned __int8 {
-	AfterRecv, ReadStaticFile, SendPartFile, RecvNextRequest, AfterSendHTML, AfterHandShake, WebSocketConnecting, WebSocketClosing ,AfterDisconnect
+	AfterRecv=0, 
+	ReadStaticFile=1, 
+	SendPartFile=2, 
+	RecvNextRequest=4, 
+	AfterSendHTML=8, 
+	AfterHandShake=16, 
+	WebSocketConnecting=32, 
+	WebSocketClosing=64,
+	AfterDisconnect=128
 };
 int http_on_header_field(llhttp_t* parser, const char* at, size_t length);
 int http_on_header_value(llhttp_t* parser, const char* at, size_t length);
@@ -42,7 +50,7 @@ struct Parse_Data {
 		settings.on_headers_complete = http_on_header_complete;
 		llhttp_init(&parser, HTTP_REQUEST, &settings);
 	};
-	llhttp_t parser;
+	llhttp_t parser; 
 	std::map<std::string, std::string> headers;
 	size_t length;
 	const char* at;

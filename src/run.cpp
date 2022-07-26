@@ -48,8 +48,8 @@ static HANDLE hThs[N_THREADS-1];
 #define log_warn(x, ...)
 
 #endif // _DEBUG
-//#define TRACE
-#ifdef TRACE
+#define TRACE 0
+#if TRACE
 #define WSASend(a, b, c, d, e, f, g) {puts("WSASend");WSASend(a, b, c, d, e, f, g);}
 #define WSARecv(a, b, c, d, e, f, g) {puts("WSARecv");WSARecv(a, b, c, d, e, f, g);}
 #define CloseClient(a) {puts("CloseClient");closeClient(a);}

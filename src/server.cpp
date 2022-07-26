@@ -12,14 +12,14 @@ void parse_keepalive(IOCP* ctx) {
 		ctx->firstCon = false;
 	}
 }
-void CloseClient(IOCP* ctx) {
-	if (ctx->state == State::WebSocketClosing || ctx->state == State::WebSocketConnecting || ctx->state==State::AfterHandShake) {
+void closeClient(IOCP* ctx) {
+	if (ctx->player_name) {
 		deletePlayer(ctx);
 	}
 	ctx->state = State::AfterDisconnect;
 	CancelIoEx((HANDLE)ctx->client, NULL);
 	if (pDisconnectEx(ctx->client, &ctx->sendOL, 0, NULL)) {
-
+		
 	}
 	else {
 		if (WSAGetLastError() != ERROR_IO_PENDING) {
@@ -154,9 +154,9 @@ void processIOCP(IOCP* ctx, OVERLAPPED* ol, DWORD dwbytes) {
 }
 void processRequest(IOCP* ctx, DWORD dwbytes) {
 	ctx->buf[dwbytes] = '\0';
-	ctx->hasp = true;
 	if (ctx->firstCon) {
 		new(&ctx->p)Parse_Data{};
+		ctx->hasp = true;
 	}
 	enum llhttp_errno err = llhttp_execute(&ctx->p.parser, ctx->buf, dwbytes);
 	if (err != HPE_OK && err != HPE_PAUSED_UPGRADE) {

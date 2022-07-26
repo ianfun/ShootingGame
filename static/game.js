@@ -4,9 +4,6 @@ var running = true;
 function quitGame(){
 	running = false;
 }
-var ws = new WebSocket('ws://' + location.host, encodeURIComponent(player_name));
-ws.binaryType = 'arraybuffer';
-ws.onerror = ws.onclose = quitGame;
 const KEY_DWON = 40;
 const KEY_UP = 38;
 const KEY_LEFT = 37;
@@ -14,10 +11,10 @@ const KEY_RIGHT = 39;
 const KEY_SPEED_UP = 90;
 const MAX_SPEED = 10;
 const MIN_SPEED = 5;
-const BULLET_SPEED = 20;
+const BULLET_SPEED = 40;
 const my_x = 725;
 const my_y = 325;
-const WS_UPDATE_CLOCK = 15;
+const WS_UPDATE_CLOCK = 1;
 var bg_x = 0;
 var bg_y = 0;
 var speed = 1;
@@ -25,6 +22,7 @@ var rdegree = 0.0;
 var then;
 var bulletSet = new Set();
 var wsClock = 0;
+var blood = 100;
 var quit = document.createElement('button');
 var players = {};
 quit.innerText = 'quit';
@@ -45,19 +43,36 @@ ctx.font  = "30px Comic Sans"
 ctx.fillStyle = "orange";
 const keyMap = new Array(255);
 var counter = 0;
-
+var gradient = ctx.createConicGradient(0, 25, 25);
+gradient.addColorStop(0, 'yellow');
+gradient.addColorStop(.5, 'orange');
+gradient.addColorStop(1, 'red');
+var ws = new WebSocket('ws://' + location.host, encodeURIComponent(player_name));
+ws.binaryType = 'arraybuffer';
+ws.onerror = ws.onclose = quitGame;
 ws.onopen = function(){
 	ws.onmessage = function(m){
 		var view = new DataView(m.data);
+		var old = players;
+		players = {};
 		for(var i=0;i<m.data.byteLength;i+=8){
 			const id = view.getInt16(i, true);
-			const last = players[id];
-			players[id] = {x: view.getInt16(i+2, true)/15, y: view.getInt16(i+4, true)/15, rad: view.getInt16(i+6, true)/10000};
-			if(last){
-				players[id].xs = last.x - players[id].x;
-				players[id].ys = last.y - players[id].y;
-				players[id].rads = last.rad - players[id].rad;
+			const x  = view.getInt16(i+2, true) / 15;
+			const y  = view.getInt16(i+4, true) / 15;
+			const rad= view.getInt16(i+6, true) / 10000;
+			const last = old[id];
+			if (last) {
+				players[id] = {
+					r: 0, 
+					xs: (x - last.x) / WS_UPDATE_CLOCK, 
+					ys: (y - last.y) / WS_UPDATE_CLOCK, 
+				};
+			}else{
+				players[id] = {};
 			}
+			players[id].x = x;
+			players[id].y = y;
+			players[id].rad = rad;
 		}
 	};
 	const DOWN_LIMIT = my_y-bg.height;
@@ -86,7 +101,7 @@ ws.onopen = function(){
 	}
 	function frame(){
 		++wsClock;
-		if (wsClock > WS_UPDATE_CLOCK) {
+		if (wsClock >= WS_UPDATE_CLOCK) {
 			if(ws.bufferedAmount==0){
 				wsClock = 0;
 				var view = new DataView(new ArrayBuffer(6));
@@ -162,17 +177,25 @@ ws.onopen = function(){
 
 	}
 	function drawPlayer(x, y, deg){
+		const CENTERX = 10;
+		const CENTERY = 24;
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(deg);
 
+		ctx.strokeStyle = gradient;
+		ctx.lineWidth = 4;
+		ctx.beginPath();
+		ctx.arc(CENTERX, CENTERY, 50, 0, 2 * Math.PI);
+		ctx.stroke();
+
 		ctx.fillStyle = 'silver';
 		ctx.fillRect(0, 0, 20, 50);
 		ctx.fillRect(0, 0, 100, 10);
-
+		
 		ctx.fillStyle = 'black';
 		ctx.beginPath();
-		ctx.arc(10, 24, 17, 0, 2 * Math.PI);
+		ctx.arc(CENTERX, CENTERY, 17, 0, (2 * Math.PI) * (blood/100));
 		ctx.fill();
 
 		ctx.restore();
@@ -194,7 +217,13 @@ ws.onopen = function(){
 			ctx.stroke();
 		}
 		for(let p of Object.values(players)){
-			drawPlayer(bg_x + p.x, bg_y + p.y, p.rad);
+			if (p.r!=undefined) {
+				const r = p.r;
+				drawPlayer(bg_x + p.x + (p.xs * r), bg_y + p.y + (p.ys * r), p.rad);
+				++p.r;
+			}else{
+				drawPlayer(bg_x + p.x, bg_y + p.y, p.rad);
+			}
 		}
 	}
 	function fpsDraw(now){

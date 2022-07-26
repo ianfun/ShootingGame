@@ -3,6 +3,9 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 	IOCP* ctx = NULL;
 	OVERLAPPED* ol = NULL;
 	for (;;) {
+		ctx = NULL;
+		ol = NULL;
+		dwbytes = 0;
 		BOOL ret = GetQueuedCompletionStatus(iocp, &dwbytes, (PULONG_PTR)&ctx, &ol, INFINITE);
 		if (ret == FALSE) {
 			if (ctx) {
@@ -12,7 +15,8 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 					case ERROR_CONNECTION_ABORTED:
 					case ERROR_NETNAME_DELETED:
 					{
-						goto DELETE_CLIENT;
+						HeapFree(heap, 0, ctx);
+						continue;
 					}break;
 					default:
 					{
@@ -32,18 +36,20 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				}break;
 				case ERROR_CONNECTION_ABORTED:
 				{
-					printf("[error] ERROR_OPERATION_ABORTED at %p, CloseClient\n", ctx);
+					log_info("ERROR_OPERATION_ABORTED at %p, CloseClient\n", ctx);
 					CloseClient(ctx);
 				}break;
 				case ERROR_NETNAME_DELETED:
 				{
-					log_info("ERROR_NETNAME_DELETED: close client");
-					if ((void*)ctx == (void*)pAcceptEx) {
-						HeapFree(heap, 0, ctx);
-						continue;
+					if (ctx->state == State::AfterDisconnect) {
+						// we have call CloseClient before
+						log_info("ERROR_NETNAME_DELETED: we have call CloseClient before");
 					}
-					CancelIoEx((HANDLE)ctx->client, NULL);
-					goto DELETE_CLIENT;
+					else {
+						log_info("ERROR_NETNAME_DELETED: close client");
+						CancelIoEx((HANDLE)ctx->client, NULL);
+						goto DELETE_CLIENT;
+					}
 				}break;
 				default:
 					assert(0);
@@ -75,7 +81,6 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 			{
 				DELETE_CLIENT:
 				if (closesocket(ctx->client) != 0) {
-					ctx->client = INVALID_SOCKET;
 					assert(0);
 				}
 				if (ctx->hasp) {
