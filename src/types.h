@@ -1,3 +1,6 @@
+struct Bullet {
+	INT16 x, y, rad;
+};
 namespace Websocket {
 	using BIT = BYTE;
 	enum Opcode : BYTE {
@@ -59,7 +62,6 @@ struct Parse_Data {
 
 struct IOCP {
 	Parse_Data p;
-	WCHAR* url;
 	union {
 		UINT64 filesize;
 		UINT16 id;
@@ -75,8 +77,10 @@ struct IOCP {
 	BYTE header[4];
 	Websocket::Opcode op;
 	HANDLE hProcess;
+	WCHAR* url;
+	BYTE bullets[16];
 	CHAR* player_name;
-	INT16 x, y, rad;
+	INT16 x, y, rad, blood;
 	bool keepalive: 1,  firstCon:1, Reading6Bytes: 1, hasp: 1;
 };
 

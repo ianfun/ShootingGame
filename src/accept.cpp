@@ -41,15 +41,7 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				}break;
 				case ERROR_NETNAME_DELETED:
 				{
-					if (ctx->state == State::AfterDisconnect) {
-						// we have call CloseClient before
-						log_info("ERROR_NETNAME_DELETED: we have call CloseClient before");
-					}
-					else {
-						log_info("ERROR_NETNAME_DELETED: close client");
-						CancelIoEx((HANDLE)ctx->client, NULL);
-						goto DELETE_CLIENT;
-					}
+					log_info("ERROR_NETNAME_DELETED");
 				}break;
 				default:
 					assert(0);
@@ -88,11 +80,9 @@ DWORD __stdcall RunIOCPLoop(LPVOID) {
 				}
 				if (ctx->url) {
 					HeapFree(heap, 0, (LPVOID)ctx->url);
-					ctx->url = NULL;
 				}
-				if (ctx->hProcess && ctx->hProcess != INVALID_HANDLE_VALUE) {
+				if (ctx->hProcess) {
 					CloseHandle(ctx->hProcess);
-					ctx->hProcess = NULL;
 				}
 				if (ctx->player_name) {
 					LocalFree(ctx->player_name);

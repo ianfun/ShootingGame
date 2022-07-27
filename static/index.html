@@ -14,17 +14,25 @@
 		<input type="text" id="name" value="player">
 		<br>
 		<button onclick="start()">Start</button>
+		<p id="status"></p>
 	</div>
 <script>
 var bg = new Image();
 bg.src = "bg.png";
 var gs = document.getElementById('gs');
+var status = document.getElementById('status');
 function start(argument) {
 	var n = document.getElementById('name');
 	if(n.value){
 		document.body.removeChild(gs);
 		runGame(n.value);
 	}
+}
+function die(){
+	status.innerText = 'You died!';
+}
+function win() {
+	status.innerText = 'You Win!';
 }
 </script>
 </body>
